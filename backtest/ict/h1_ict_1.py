@@ -5,13 +5,18 @@ from hyperliquid.utils import constants
 from hyperliquid.info import Info
 import plotly.graph_objects as go
 
-# --- [설정 및 상수] ---
+# =========================
+# Setting
+# =========================
 SYMBOL = "BTC"
 BASE_URL = constants.TESTNET_API_URL
 RISK_REWARD_RATIO = 3.0
 info = Info(BASE_URL, skip_ws=True)
 
 
+# =========================
+# Data collection
+# =========================
 def get_ohlcv(symbol, interval, days=15):
     try:
         start_time = int((time.time() - 86400 * days) * 1000)
@@ -41,18 +46,12 @@ def get_ohlcv(symbol, interval, days=15):
         return None
 
 
+# =========================
+# H1 POI
+# =========================
 def find_h1_pois(df):
-    """
-    [공통 필수 조건]
-    1. 2번 캔들이 과거 24봉 평균 몸통의 2배 이상 (장대봉)
-    2. 1번 꼬리와 3번 꼬리가 닿지 않음 (갭 발생)
-
-    [개별 판정 조건]
-    - FVG: (양양양 + 이전 음봉 윗꼬리 중첩) 또는 (음음음 + 이전 양봉 아랫꼬리 중첩)
-    - OB: 사용자 정의 색상 패턴 (음양양, 양양음 / 양음음, 음음양)
-    """
     pois = []
-    n = 24  # 꼬리 탐색 범위 및 변동성 참조 범위
+    n = 24  # Tail search range and volatility reference range
 
     if len(df) < n + 5:
         return pois
@@ -60,7 +59,7 @@ def find_h1_pois(df):
     for i in range(n, len(df)):
         c1, c2, c3 = df.iloc[i - 2], df.iloc[i - 1], df.iloc[i]
 
-        # --- [공통 1: 변동성 필터] ---
+        # --- [Common 1: Volatility Filter] ---
         prev_bodies = abs(
             df["close"].iloc[i - (n + 1) : i - 1] - df["open"].iloc[i - (n + 1) : i - 1]
         )
@@ -69,14 +68,13 @@ def find_h1_pois(df):
         if curr_body_size < (avg_body_size * 2.0):
             continue
 
-        # --- [공통 2: 갭(Gap) 확인] ---
+        # --- [Common 2: check gap] ---
         is_long_gap = c3["low"] > c1["high"]
         is_short_gap = c3["high"] < c1["low"]
         if not (is_long_gap or is_short_gap):
             continue
 
-        # --- [개별 판정 1: FVG 로직 (꼬리 중첩)] ---
-        # LONG FVG (양양양)
+        # --- [FVG (candle tail overlap)] ---
         if (
             is_long_gap
             and c1["close"] > c1["open"]
@@ -86,9 +84,9 @@ def find_h1_pois(df):
             fvg_t, fvg_b = c3["low"], c1["high"]
             for j in range(i - n, i - 2):
                 prev = df.iloc[j]
-                if prev["close"] < prev["open"]:  # 이전 음봉
+                if prev["close"] < prev["open"]:
                     u_wick_t, u_wick_b = prev["high"], max(prev["open"], prev["close"])
-                    # 음봉 윗꼬리가 FVG 갭과 겹치는지 확인
+
                     top, bottom = min(fvg_t, u_wick_t), max(fvg_b, u_wick_b)
                     if top > bottom:
                         pois.append(
@@ -99,9 +97,7 @@ def find_h1_pois(df):
                                 "bottom": bottom,
                             }
                         )
-                        break  # 중첩 하나 찾으면 종료
-
-        # SHORT FVG (음음음)
+                        break
         elif (
             is_short_gap
             and c1["close"] < c1["open"]
@@ -111,9 +107,9 @@ def find_h1_pois(df):
             fvg_t, fvg_b = c1["low"], c3["high"]
             for j in range(i - n, i - 2):
                 prev = df.iloc[j]
-                if prev["close"] > prev["open"]:  # 이전 양봉
+                if prev["close"] > prev["open"]:
                     l_wick_t, l_wick_b = min(prev["open"], prev["close"]), prev["low"]
-                    # 양봉 아랫꼬리가 FVG 갭과 겹치는지 확인
+
                     top, bottom = min(fvg_t, l_wick_t), max(fvg_b, l_wick_b)
                     if top > bottom:
                         pois.append(
@@ -126,8 +122,7 @@ def find_h1_pois(df):
                         )
                         break
 
-        # --- [개별 판정 2: OB 로직 (색상 패턴)] ---
-        # LONG OB
+        # --- [OB] ---
         if is_long_gap:
             if (
                 c1["close"] < c1["open"]
@@ -146,8 +141,6 @@ def find_h1_pois(df):
                         "bottom": c1["low"],
                     }
                 )
-
-        # SHORT OB
         elif is_short_gap:
             if (
                 c1["close"] > c1["open"]
@@ -170,6 +163,9 @@ def find_h1_pois(df):
     return pois
 
 
+# =====================================================
+# M5 Engulfing
+# =====================================================
 def check_m5_engulfing(df_m5):
     if len(df_m5) < 2:
         return None, None
@@ -189,6 +185,9 @@ def check_m5_engulfing(df_m5):
     return None, None
 
 
+# =====================================================
+# M1 CHoCH
+# =====================================================
 def check_m1_choch(df_m1, direction):
     if len(df_m1) < 5:
         return False, None
@@ -203,6 +202,9 @@ def check_m1_choch(df_m1, direction):
     return False, None
 
 
+# =====================================================
+# Backtest Visualize
+# =====================================================
 def visualize_backtest(df_h1, results):
     if not results:
         return
@@ -220,7 +222,7 @@ def visualize_backtest(df_h1, results):
     )
     for trade in results:
         color = "royalblue" if trade["Result"] == "WIN" else "indianred"
-        # 진입 표시
+
         fig.add_annotation(
             x=trade["Date"],
             y=trade["Entry"],
@@ -228,7 +230,6 @@ def visualize_backtest(df_h1, results):
             showarrow=False,
             font=dict(color=color, size=20),
         )
-        # TP/SL 짧은 가로선
         fig.add_shape(
             type="line",
             x0=trade["Date"],
@@ -251,25 +252,25 @@ def visualize_backtest(df_h1, results):
         xaxis_rangeslider_visible=False,
     )
     fig.write_html("backtest_chart_1.html")
-    print("\n✅ 차트 생성 완료: backtest_chart.html 파일을 브라우저로 여세요.")
+    print("\n✅ Complete Visualization: 'backtest_chart_1.html' open file.")
 
 
 def run_backtest_logic():
-    print(f"⌛ 데이터 수집 중...")
+    print(f"⌛ Collecting Data..")
     df_h1 = get_ohlcv(SYMBOL, "1h", 15)
     df_m5 = get_ohlcv(SYMBOL, "5m", 15)
     df_m1 = get_ohlcv(SYMBOL, "1m", 15)
     if df_h1 is None or df_m5 is None:
         return
 
-    print(f"🚀 백테스팅 시작... (캔들 4,000개 이상 분석 중, 잠시만 기다려주세요)")
+    print(f"🚀 Start Backtesting...")
     results = []
     used_poi_ids = set()
     total = len(df_m5)
 
     for i in range(50, total):
         if i % 500 == 0:
-            print(f"⏳ 진행도: {i}/{total} ({ (i/total)*100:.1f}%)")
+            print(f"⏳ Progress: {i}/{total} ({ (i/total)*100:.1f}%)")
         curr_time = df_m5.index[i]
         curr_price = df_m5["close"].iloc[i]
         lookback_h1 = df_h1[df_h1.index <= curr_time]
@@ -332,11 +333,11 @@ def run_backtest_logic():
         print("\n" + report.to_string())
         win_c = (report["Result"] == "WIN").sum()
         print(
-            f"\n총 거래: {len(report)} | 승: {win_c} | 패: {len(report)-win_c} | 승률: {(win_c/len(report))*100:.2f}%"
+            f"\ntotal trades: {len(report)} | win: {win_c} | loss: {len(report)-win_c} | WinRate: {(win_c/len(report))*100:.2f}%"
         )
         visualize_backtest(df_h1, results)
     else:
-        print("조건에 맞는 거래가 없습니다.")
+        print("No deals matching the criteria")
 
 
 if __name__ == "__main__":
