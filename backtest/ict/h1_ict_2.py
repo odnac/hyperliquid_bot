@@ -5,13 +5,18 @@ from hyperliquid.utils import constants
 from hyperliquid.info import Info
 import plotly.graph_objects as go
 
-# --- [설정 및 상수] ---
+# =====================================================
+# Setting
+# =====================================================
 SYMBOL = "BTC"
 BASE_URL = constants.TESTNET_API_URL
 RISK_REWARD_RATIO = 3.0
 info = Info(BASE_URL, skip_ws=True)
 
 
+# =====================================================
+# Data collection
+# =====================================================
 def get_ohlcv(symbol, interval, days=15):
     try:
         start_time = int((time.time() - 86400 * days) * 1000)
@@ -20,6 +25,7 @@ def get_ohlcv(symbol, interval, days=15):
         )
         if not candles:
             return None
+
         df = pd.DataFrame(candles)
         df = df.rename(
             columns={
@@ -41,8 +47,10 @@ def get_ohlcv(symbol, interval, days=15):
         return None
 
 
+# =====================================================
+# H1 Market Sturcture
+# =====================================================
 def check_h1_structure(df_h1):
-    """H1 마켓 구조: 몸통(종가) 마감 기준 스윙 돌파 확인"""
     if len(df_h1) < 40:
         return "NEUTRAL"
     prev_high = df_h1["high"].iloc[-49:-1].max()  # -49:48
@@ -55,12 +63,16 @@ def check_h1_structure(df_h1):
     return "NEUTRAL"
 
 
+# =====================================================
+# H1 POI (FVG & OB)
+# =====================================================
 def find_h1_pois(df):
-    """FVG/OB POI 스캔"""
     pois = []
     n = 24
+
     if len(df) < n + 5:
         return pois
+
     for i in range(n, len(df)):
         c1, c2, c3 = df.iloc[i - 2], df.iloc[i - 1], df.iloc[i]
         prev_bodies = abs(
@@ -142,8 +154,10 @@ def find_h1_pois(df):
     return pois
 
 
+# =====================================================
+# M1 CHoCH
+# =====================================================
 def check_m1_choch(df_m1, direction):
-    """M1 CHoCH 판정: 몸통 마감 기준"""
     if len(df_m1) < 15:
         return False, None
     if direction == "LONG":
@@ -157,10 +171,12 @@ def check_m1_choch(df_m1, direction):
     return False, None
 
 
+# =====================================================
+# Backtest Visualize
+# =====================================================
 def visualize_backtest(df_h1, results):
-    """결과 시각화 함수"""
     if not results:
-        print("시각화할 거래 데이터가 없습니다.")
+        print("There is no transaction data to visualize.")
         return
     fig = go.Figure(
         data=[
@@ -177,7 +193,6 @@ def visualize_backtest(df_h1, results):
 
     for trade in results:
         color = "royalblue" if trade["Result"] == "WIN" else "indianred"
-        # 진입 표시 (화살표)
         fig.add_annotation(
             x=trade["Date"],
             y=trade["Entry"],
@@ -185,7 +200,6 @@ def visualize_backtest(df_h1, results):
             showarrow=False,
             font=dict(color=color, size=18),
         )
-        # TP/SL 라인
         fig.add_shape(
             type="line",
             x0=trade["Date"],
@@ -209,11 +223,11 @@ def visualize_backtest(df_h1, results):
         xaxis_rangeslider_visible=False,
     )
     fig.write_html("backtest_chart_2.html")
-    print("\n✅ 시각화 완료: 'backtest_chart.html' 파일을 열어보세요.")
+    print("\n✅ Complete Visualization: 'backtest_chart.html' open file.")
 
 
 def run_backtest_logic():
-    print(f"⌛ 데이터 수집 중...")
+    print(f"⌛ Collecting Data..")
     df_h1, df_m5, df_m1 = (
         get_ohlcv(SYMBOL, "1h", 30),
         get_ohlcv(SYMBOL, "5m", 30),
@@ -222,13 +236,13 @@ def run_backtest_logic():
     if df_h1 is None or df_m5 is None or df_m1 is None:
         return
 
-    print(f"🚀 백테스팅 시작...")
+    print(f"🚀 Start Backtesting...")
     results, used_poi_ids = [], set()
     total = len(df_m5)
 
     for i in range(50, total):
         if i % 500 == 0:
-            print(f"⏳ 진행도: {i}/{total} ({(i/total)*100:.1f}%)")
+            print(f"⏳ Progress: {i}/{total} ({(i/total)*100:.1f}%)")
         curr_time = df_m5.index[i]
         curr_price = df_m5["close"].iloc[i]
 
@@ -297,11 +311,11 @@ def run_backtest_logic():
         print("\n" + report.to_string())
         win_c = (report["Result"] == "WIN").sum()
         print(
-            f"\n총 거래: {len(report)} | 승: {win_c} | 패: {len(report)-win_c} | 승률: {(win_c/len(report))*100:.2f}%"
+            f"\ntotal trades: {len(report)} | win: {win_c} | loss: {len(report)-win_c} | WinRate: {(win_c/len(report))*100:.2f}%"
         )
-        visualize_backtest(df_h1, results)  # 시각화 호출
+        visualize_backtest(df_h1, results)
     else:
-        print("조건에 맞는 거래가 없습니다.")
+        print("No deals matching the criteria")
 
 
 if __name__ == "__main__":
