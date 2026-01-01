@@ -223,7 +223,7 @@ def visualize_backtest(df_h1, results):
         xaxis_rangeslider_visible=False,
     )
     fig.write_html("backtest_chart_2.html")
-    print("\n✅ Complete Visualization: 'backtest_chart.html' open file.")
+    print("\n✅ Complete Visualization: 'backtest_chart_2.html' open file.")
 
 
 def run_backtest_logic():
